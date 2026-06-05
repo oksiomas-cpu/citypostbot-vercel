@@ -47,17 +47,32 @@ ADS = {
 DB_PATH = "/tmp/citypostbot_data.json"
 USER_STATE = {}  # в памяти — не теряется между запросами одной сессии
 
+DEFAULT_GROUPS = [
+    {"id": "g1", "name": "Испания чат | СНГ", "handle": "@spainchats", "platform": "Telegram", "format": "текст"},
+    {"id": "g2", "name": "Испания | Для Своих | Чат", "handle": "@spain_chatss", "platform": "Telegram", "format": "текст"},
+    {"id": "g3", "name": "Валенсия / Costa Blanca", "handle": "@costablanka", "platform": "Telegram", "format": "текст"},
+    {"id": "g4", "name": "Испания чат | Spain News", "handle": "@SpainNewsChat", "platform": "Telegram", "format": "текст"},
+    {"id": "g5", "name": "Наши в Мадриде", "handle": "—", "platform": "Telegram", "format": "текст"},
+    {"id": "g6", "name": "Digital Nomad Spain", "handle": "@chatfornomads", "platform": "Telegram", "format": "текст"},
+    {"id": "g7", "name": "Марбелья / Costa del Sol", "handle": "@Marbella_reklama", "platform": "Telegram", "format": "текст"},
+    {"id": "g8", "name": "Business в Испании", "handle": "@konciergemarket", "platform": "Telegram", "format": "текст"},
+    {"id": "g9", "name": "ВНЖ Испании Чат", "handle": "—", "platform": "Telegram", "format": "текст"},
+    {"id": "g10", "name": "Русские в Малаге", "handle": "@russkie_malaga", "platform": "Telegram", "format": "текст"},
+]
+
 def load_db():
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
-        return {
-            "groups": [],
+        db = {
+            "groups": DEFAULT_GROUPS,
             "publications": [],
             "link": "https://t.me/lacataciegas",
             "game_date": GAME_DATE
         }
+        save_db(db)
+        return db
 
 def save_db(db):
     with open(DB_PATH, "w", encoding="utf-8") as f:
