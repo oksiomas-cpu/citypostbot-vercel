@@ -1,10 +1,12 @@
 """
 CityPostBot — main entry point for Railway
+State stored in memory (works fine for single instance)
 """
 import json
 import os
 import httpx
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime
 
 TOKEN = os.environ.get("BOT_TOKEN", "")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "835260826"))
@@ -41,14 +43,21 @@ ADS = {
     )
 }
 
+# ─── In-memory state + persistent file ──────────────────────
 DB_PATH = "/tmp/citypostbot_data.json"
+USER_STATE = {}  # в памяти — не теряется между запросами одной сессии
 
 def load_db():
     try:
         with open(DB_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
-        return {"groups": [], "publications": [], "link": "https://t.me/lacataciegas", "game_date": GAME_DATE, "state": {}}
+        return {
+            "groups": [],
+            "publications": [],
+            "link": "https://t.me/lacataciegas",
+            "game_date": GAME_DATE
+        }
 
 def save_db(db):
     with open(DB_PATH, "w", encoding="utf-8") as f:
@@ -60,8 +69,8 @@ def send(chat_id, text, reply_markup=None):
         payload["reply_markup"] = json.dumps(reply_markup)
     try:
         httpx.post(f"{BOT_URL}/sendMessage", json=payload, timeout=10)
-    except:
-        pass
+    except Exception as e:
+        print(f"Send error: {e}")
 
 def edit(chat_id, message_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "message_id": message_id, "text": text, "parse_mode": "Markdown"}
@@ -69,8 +78,8 @@ def edit(chat_id, message_id, text, reply_markup=None):
         payload["reply_markup"] = json.dumps(reply_markup)
     try:
         httpx.post(f"{BOT_URL}/editMessageText", json=payload, timeout=10)
-    except:
-        pass
+    except Exception as e:
+        print(f"Edit error: {e}")
 
 def answer_cb(cb_id):
     try:
@@ -99,6 +108,7 @@ def group_status(group_id, db):
     return "active"
 
 def handle_update(body):
+    global USER_STATE
     db = load_db()
 
     if "callback_query" in body:
@@ -114,19 +124,41 @@ def handle_update(body):
             if not group:
                 return
             version = next_version(group_id, db)
-            text = ADS[version].format(game_date=db.get("game_date", GAME_DATE), link=db.get("link", ""))
-            kb = inline_kb([[("✅ Отправила", f"sent_{group_id}_{version}"), ("⏭ Пропустить", f"skip_{group_id}")]])
-            edit(chat_id, msg_id, f"📢 *{group['name']}* | {group['platform']} | {group.get('format','текст')}\nВерсия: *{version}*\n\n{'─'*28}\n\n{text}\n\n{'─'*28}\n\nСкопируй текст выше и опубликуй.", reply_markup=kb)
+            text = ADS[version].format(
+                game_date=db.get("game_date", GAME_DATE),
+                link=db.get("link", "https://t.me/lacataciegas")
+            )
+            kb = inline_kb([[
+                ("✅ Отправила", f"sent_{group_id}_{version}"),
+                ("⏭ Пропустить", f"skip_{group_id}")
+            ]])
+            edit(chat_id, msg_id,
+                f"📢 *{group['name']}* | {group['platform']} | {group.get('format','текст')}\n"
+                f"Версия: *{version}*\n\n{'─'*28}\n\n{text}\n\n{'─'*28}\n\n"
+                f"Скопируй текст выше и опубликуй в группу.",
+                reply_markup=kb
+            )
 
         elif data.startswith("sent_"):
             parts = data.split("_")
             group_id, version = parts[1], parts[2]
             group = next((g for g in db["groups"] if g["id"] == group_id), None)
-            from datetime import datetime
-            db["publications"].append({"group_id": group_id, "version": version, "date": datetime.now().isoformat(), "reaction": False})
+            db["publications"].append({
+                "group_id": group_id,
+                "version": version,
+                "date": datetime.now().isoformat(),
+                "reaction": False
+            })
             save_db(db)
-            kb = inline_kb([[("👍 Был отклик", f"reaction_{group_id}_yes"), ("👎 Тишина", f"reaction_{group_id}_no")]])
-            edit(chat_id, msg_id, f"✅ Записала публикацию в *{group['name'] if group else group_id}*\n\nБыл ли отклик на *предыдущую* публикацию?", reply_markup=kb)
+            kb = inline_kb([[
+                ("👍 Был отклик", f"reaction_{group_id}_yes"),
+                ("👎 Тишина", f"reaction_{group_id}_no")
+            ]])
+            edit(chat_id, msg_id,
+                f"✅ Записала публикацию в *{group['name'] if group else group_id}*\n\n"
+                f"Был ли отклик на *предыдущую* публикацию в этой группе?",
+                reply_markup=kb
+            )
 
         elif data.startswith("reaction_"):
             parts = data.split("_")
@@ -136,7 +168,10 @@ def handle_update(body):
                 pubs[-2]["reaction"] = (result == "yes")
                 save_db(db)
             st = group_status(group_id, db)
-            msg = "❌ Группа мёртвая — 3 публикации без отклика." if st == "dead" else "👍 Записала! Следующая публикация через 4 дня."
+            if st == "dead":
+                msg = "❌ Группа мёртвая — 3 публикации без отклика. Убрана из ротации."
+            else:
+                msg = "👍 Записала! Следующая публикация через 4 дня."
             edit(chat_id, msg_id, msg)
 
         elif data.startswith("skip_"):
@@ -150,8 +185,20 @@ def handle_update(body):
         if chat_id != ADMIN_ID:
             return
 
+        # Проверяем состояние
+        state = USER_STATE.get(chat_id)
+
         if text == "/start":
-            send(chat_id, "👋 *CityPostBot* — помощник по постингу\n\n*/post* — текст для публикации\n*/groups* — список групп\n*/add* — добавить группу\n*/stats* — статистика\n*/setlink* — изменить ссылку\n*/setdate* — изменить дату игры")
+            USER_STATE[chat_id] = None
+            send(chat_id,
+                "👋 *CityPostBot* — помощник по постингу\n\n"
+                "*/post* — текст для публикации\n"
+                "*/groups* — список групп\n"
+                "*/add* — добавить группу\n"
+                "*/stats* — статистика\n"
+                "*/setlink* — изменить ссылку\n"
+                "*/setdate* — изменить дату игры"
+            )
 
         elif text == "/groups":
             if not db["groups"]:
@@ -163,20 +210,29 @@ def handle_update(body):
                 em = {"new": "🔲", "active": "✅", "dead": "❌"}.get(st, "🔲")
                 pubs = [p for p in db["publications"] if p["group_id"] == g["id"]]
                 r = sum(1 for p in pubs if p.get("reaction"))
-                t += f"{em} *{g['name']}* ({g['platform']})\n   {g.get('handle','—')} | {g.get('format','текст')}\n   Публ: {len(pubs)} | Откл: {r}\n\n"
+                t += f"{em} *{g['name']}* ({g['platform']})\n"
+                t += f"   {g.get('handle','—')} | {g.get('format','текст')}\n"
+                t += f"   Публ: {len(pubs)} | Откл: {r}\n\n"
             send(chat_id, t)
 
         elif text == "/add":
-            db["state"][str(chat_id)] = "awaiting_group"
-            save_db(db)
-            send(chat_id, "Отправь данные:\n\n`название | @handle | Telegram или Facebook | текст или картинка`\n\nПример:\n`Испания чат СНГ | @spainchats | Telegram | текст`")
+            USER_STATE[chat_id] = "awaiting_group"
+            send(chat_id,
+                "Отправь данные группы в формате:\n\n"
+                "`название | @handle | Telegram или Facebook | текст или картинка`\n\n"
+                "Пример:\n`Испания чат СНГ | @spainchats | Telegram | текст`"
+            )
 
         elif text == "/post":
             active = [g for g in db["groups"] if group_status(g["id"], db) != "dead"]
             if not active:
                 send(chat_id, "Нет активных групп. Добавь через /add")
                 return
-            buttons = [[(f"{'✅' if group_status(g['id'],db)=='active' else '🔲'} {g['name']} ({g['platform']})", f"post_{g['id']}")] for g in active]
+            buttons = [
+                [(f"{'✅' if group_status(g['id'],db)=='active' else '🔲'} {g['name']} ({g['platform']})",
+                  f"post_{g['id']}")]
+                for g in active
+            ]
             send(chat_id, "📢 Выбери группу:", reply_markup=inline_kb(buttons))
 
         elif text == "/stats":
@@ -191,42 +247,61 @@ def handle_update(body):
                 if p.get("reaction"):
                     vr[v] = vr.get(v, 0) + 1
             pct = round(reactions / total * 100) if total else 0
-            send(chat_id, f"📊 *Статистика*\n\nГрупп: {len(db['groups'])} (акт: {len(db['groups'])-dead}, мёрт: {dead})\nПубл: {total} | Откл: {reactions} ({pct}%)\n\n*По версиям:*\nA: {vc['A']} публ / {vr['A']} откл\nB: {vc['B']} публ / {vr['B']} откл\nC: {vc['C']} публ / {vr['C']} откл\n\n🔗 {db.get('link','—')}\n📅 {db.get('game_date','—')}")
+            send(chat_id,
+                f"📊 *Статистика*\n\n"
+                f"Групп: {len(db['groups'])} (акт: {len(db['groups'])-dead}, мёрт: {dead})\n"
+                f"Публ: {total} | Откл: {reactions} ({pct}%)\n\n"
+                f"*По версиям:*\n"
+                f"A: {vc['A']} публ / {vr['A']} откл\n"
+                f"B: {vc['B']} публ / {vr['B']} откл\n"
+                f"C: {vc['C']} публ / {vr['C']} откл\n\n"
+                f"🔗 {db.get('link','—')}\n"
+                f"📅 {db.get('game_date','—')}"
+            )
 
         elif text == "/setlink":
-            db["state"][str(chat_id)] = "awaiting_link"
-            save_db(db)
+            USER_STATE[chat_id] = "awaiting_link"
             send(chat_id, "Отправь новую ссылку:")
 
         elif text == "/setdate":
-            db["state"][str(chat_id)] = "awaiting_date"
-            save_db(db)
+            USER_STATE[chat_id] = "awaiting_date"
             send(chat_id, "Отправь новую дату игры (например: 27 июня):")
 
+        elif state == "awaiting_group":
+            parts = [p.strip() for p in text.split("|")]
+            if len(parts) != 4:
+                send(chat_id,
+                    "❌ Неверный формат. Попробуй:\n\n"
+                    "`название | @handle | Telegram или Facebook | текст или картинка`"
+                )
+                return
+            gid = f"g{len(db['groups'])+1}"
+            db["groups"].append({
+                "id": gid,
+                "name": parts[0],
+                "handle": parts[1],
+                "platform": parts[2],
+                "format": parts[3]
+            })
+            save_db(db)
+            USER_STATE[chat_id] = None
+            send(chat_id, f"✅ Группа *{parts[0]}* добавлена!")
+
+        elif state == "awaiting_link":
+            db["link"] = text.strip()
+            save_db(db)
+            USER_STATE[chat_id] = None
+            send(chat_id, f"✅ Ссылка обновлена: {db['link']}")
+
+        elif state == "awaiting_date":
+            db["game_date"] = text.strip()
+            save_db(db)
+            USER_STATE[chat_id] = None
+            send(chat_id, f"✅ Дата игры: {db['game_date']}")
+
         else:
-            state = db.get("state", {}).get(str(chat_id))
-            if state == "awaiting_group":
-                parts = [p.strip() for p in text.split("|")]
-                if len(parts) != 4:
-                    send(chat_id, "❌ Неверный формат. Попробуй:\n`название | @handle | Telegram или Facebook | текст или картинка`")
-                    return
-                gid = f"g{len(db['groups'])+1}"
-                db["groups"].append({"id": gid, "name": parts[0], "handle": parts[1], "platform": parts[2], "format": parts[3]})
-                db["state"][str(chat_id)] = None
-                save_db(db)
-                send(chat_id, f"✅ Группа *{parts[0]}* добавлена!")
-            elif state == "awaiting_link":
-                db["link"] = text.strip()
-                db["state"][str(chat_id)] = None
-                save_db(db)
-                send(chat_id, f"✅ Ссылка: {db['link']}")
-            elif state == "awaiting_date":
-                db["game_date"] = text.strip()
-                db["state"][str(chat_id)] = None
-                save_db(db)
-                send(chat_id, f"✅ Дата игры: {db['game_date']}")
-            else:
-                send(chat_id, "Используй: /post /groups /add /stats /setlink /setdate")
+            send(chat_id, "Используй: /post /groups /add /stats /setlink /setdate")
+
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -247,6 +322,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
