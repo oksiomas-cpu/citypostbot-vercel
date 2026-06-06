@@ -1,0 +1,26 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            if [ -d /home/hcs/citypostbot ]; then
+              cd /home/hcs/citypostbot && git pull origin main
+            else
+              git clone https://github.com/oksiomas-cpu/citypostbot-vercel.git /home/hcs/citypostbot
+            fi
+            sudo systemctl restart citypostbot
+            echo "Bot restarted OK"
