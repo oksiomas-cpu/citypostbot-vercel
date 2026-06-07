@@ -189,6 +189,16 @@ def on_callback(cq,db):
     elif data.startswith("canceldelete_"):
         edit(cid,mid,"Отмена. Группа не удалена.")
 
+    elif data.startswith("leadgroup_"):
+        source_id=data[10:]
+        if source_id=="direct":
+            source_name="Написал напрямую"
+        else:
+            g=next((x for x in db["groups"] if x["id"]==source_id),None)
+            source_name=g["name"] if g else source_id
+        USER_STATE[cid]=f"awaiting_lead_name|{source_name}"
+        edit(cid,mid,f"Источник: {source_name}\n\nНапиши имя человека (или ник в Telegram):")
+
     elif data.startswith("setstatus_"):
         gid=data[10:]
         g=next((x for x in db["groups"] if x["id"]==gid),None)
@@ -247,7 +257,7 @@ def on_message(msg,db):
                     "date": datetime.now().isoformat()
                 })
                 save_db(db)
-        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/delete — удалить группу\n/status — сменить статус группы\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди")
+        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/delete — удалить группу\n/status — сменить статус группы\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди\n/lead — записать заинтересованного человека\n/leads — список всех лидов")
 
     elif text=="/groups":
         if not db["groups"]: send(cid,"Групп нет."); return
@@ -322,6 +332,31 @@ def on_message(msg,db):
             send(cid,f"Ссылка для «{g['name']}» сохранена:\n{g['group_link']}")
         USER_STATE[cid]=None
 
+    elif state and state.startswith("awaiting_lead_name|"):
+        source_name=state.split("|",1)[1]
+        name=text.strip()
+        USER_STATE[cid]=f"awaiting_lead_note|{source_name}|{name}"
+        send(cid,f"Имя: {name}\nИсточник: {source_name}\n\nДобавь заметку (что спросил, какой уровень, интерес) или напиши «-» если заметок нет:")
+
+    elif state and state.startswith("awaiting_lead_note|"):
+        parts=state.split("|",2)
+        source_name=parts[1]
+        name=parts[2]
+        note=text.strip() if text.strip()!="-" else ""
+        if "manual_leads" not in db:
+            db["manual_leads"]=[]
+        db["manual_leads"].append({
+            "name": name,
+            "source": source_name,
+            "note": note,
+            "date": datetime.now().isoformat()
+        })
+        save_db(db)
+        USER_STATE[cid]=None
+        msg=f"✅ Лид записан!\n\n👤 {name}\n   Источник: {source_name}"
+        if note: msg+=f"\n   Заметка: {note}"
+        send(cid,msg)
+
     elif text=="/sources":
         leads = db.get("leads", [])
         if not leads:
@@ -344,8 +379,36 @@ def on_message(msg,db):
         btns=[[(f"{'✅' if gstatus(g['id'],db)=='active' else '❌' if gstatus(g['id'],db)=='dead' else '🔲'} {g['name']}",f"setstatus_{g['id']}")] for g in db["groups"]]
         send(cid,"Выбери группу для смены статуса:",reply_markup=kb(btns))
 
+    elif text=="/lead":
+        USER_STATE[cid]="awaiting_lead_name"
+        # Показываем кнопки групп для выбора источника
+        if not db["groups"]:
+            send(cid,"Сначала добавь группы через /add")
+            return
+        btns=[[(f"{g['name']}",f"leadgroup_{g['id']}")] for g in db["groups"]]
+        btns.append([("📝 Написал напрямую (не из группы)","leadgroup_direct")])
+        send(cid,"Из какой группы написал человек?",reply_markup=kb(btns))
+
+    elif text=="/leads":
+        leads=db.get("leads",[])
+        manual_leads=db.get("manual_leads",[])
+        all_leads=manual_leads
+        if not all_leads and not leads:
+            send(cid,"Лидов пока нет.\n\nИспользуй /lead чтобы записать заинтересованного человека.")
+            return
+        t=f"Лиды ({len(all_leads)}):\n\n"
+        for l in reversed(all_leads):
+            date=l.get("date","")[:10]
+            name=l.get("name","—")
+            source=l.get("source","—")
+            note=l.get("note","")
+            t+=f"👤 {name}\n   Источник: {source}\n   Дата: {date}"
+            if note: t+=f"\n   Заметка: {note}"
+            t+="\n\n"
+        send(cid,t)
+
     else:
-        send(cid,"Используй: /post /groups /add /delete /status /stats /setlink /setgrouplink /setdate /sources")
+        send(cid,"Используй: /post /groups /add /delete /status /stats /setlink /setgrouplink /setdate /sources /lead /leads")
 
 def check_schedule():
     """Проверяет каждый час — кому пора напомнить о постинге."""
@@ -450,6 +513,16 @@ def on_callback(cq,db):
 
     elif data.startswith("canceldelete_"):
         edit(cid,mid,"Отмена. Группа не удалена.")
+
+    elif data.startswith("leadgroup_"):
+        source_id=data[10:]
+        if source_id=="direct":
+            source_name="Написал напрямую"
+        else:
+            g=next((x for x in db["groups"] if x["id"]==source_id),None)
+            source_name=g["name"] if g else source_id
+        USER_STATE[cid]=f"awaiting_lead_name|{source_name}"
+        edit(cid,mid,f"Источник: {source_name}\n\nНапиши имя человека (или ник в Telegram):")
 
     elif data.startswith("setstatus_"):
         gid=data[10:]
