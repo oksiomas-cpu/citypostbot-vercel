@@ -97,6 +97,41 @@ def edit(chat_id, msg_id, text, reply_markup=None):
 def kb(buttons):
     return {"inline_keyboard":[[{"text":b[0],"callback_data":b[1]} for b in row] for row in buttons]}
 
+def kb_url(label, url):
+    """Кнопка-ссылка (открывает URL вместо callback)."""
+    return {"inline_keyboard":[[{"text":label,"url":url}]]}
+
+# ── ГОСТЕВОЙ ОФФЕР (видят все, кроме админа) ──────────────────────
+TRIBUTE_LINK = "https://t.me/tribute/app?startapp=sRi5"
+
+WELCOME_TEXT = (
+"✨ Как устроена подписка\n\n"
+"Клуб — это живая система, к которой нужно привыкнуть. Поэтому вход разделён на этапы — и играть ты можешь начать сразу, а не «когда-нибудь потом».\n\n"
+"🔸 7 дней — бесплатно. Заходишь, осматриваешься, видишь свой уровень. И уже в эти дни можешь сыграть свою первую игру — если попадаешь в расписание и чувствуешь силы.\n\n"
+"🔸 Первый месяц — €1,30. Целый месяц внутри клуба: подготовка, материалы и живые игры по расписанию. Никто никуда не торопит — играешь, когда готов.\n\n"
+"🔸 Дальше — €10 в месяц. Одна сюжетная игра уже включена в подписку. Дополнительные игры — €5 для участников клуба.\n\n"
+"Стоимость одной игры без клубной карты — €10. В клубе — выгоднее с первого дня.\n\n"
+"✨ Как ты растёшь внутри клуба\n\n"
+"Здесь нет обязательного маршрута и нет давления двигаться быстрее, чем ты готов. Подготовился. Поиграл. Почувствовал свою речь. Хочешь — шаг на следующий уровень. Хочешь — остаёшься и повторяешь игру, с той же командой или с новой.\n\n"
+"Игры можно проходить заново. Уровни можно менять в любую сторону. Цель не в том, чтобы быстрее пройти материал. Цель — начать говорить и не останавливаться.\n\n"
+"🔗 Твой следующий шаг\n\n"
+"Прямо сейчас мы готовимся к игре для уровня A1–A2.\n\n"
+"🔸 переходишь по кнопке ниже\n"
+"🔸 заходишь в клуб\n"
+"🔸 получаешь первые материалы\n"
+"🔸 начинаешь готовиться"
+)
+
+def send_welcome(cid, db):
+    """Показывает гостю оффер: картинка CLUB ACCESS (если загружена) отдельным
+    сообщением + текст с кнопкой Tribute. Текст длиннее лимита подписи к фото
+    (1024), поэтому шлём двумя сообщениями — так ничего не обрезается."""
+    btn = {"inline_keyboard":[[{"text":"🔸 Начать подготовку","url":TRIBUTE_LINK}]]}
+    wimg = db.get("welcome_image")
+    if wimg:
+        api("sendPhoto", chat_id=cid, photo=wimg)
+    api("sendMessage", chat_id=cid, text=WELCOME_TEXT, reply_markup=btn)
+
 def next_ver(gid, db):
     pubs=[p for p in db["publications"] if p["group_id"]==gid]
     v=["A","B","C"]
@@ -291,10 +326,43 @@ def on_message(msg, db):
     cid=msg["chat"]["id"]
     text=msg.get("text","")
     photo=msg.get("photo")
-    if cid!=ADMIN_ID: return
+
+    # ── ГОСТЬ (не админ) ──────────────────────────────────────────
+    # Любой человек, пришедший по помеченной ссылке ?start=gID:
+    # фиксируем лид (источник), показываем оффер. Админку не видит.
+    if cid!=ADMIN_ID:
+        if text and text.startswith("/start"):
+            parts = text.split(" ", 1)
+            if len(parts) == 2:
+                source_gid = parts[1].strip()
+                g = next((x for x in db["groups"] if x["id"] == source_gid), None)
+                if g:
+                    if "leads" not in db:
+                        db["leads"] = []
+                    db["leads"].append({
+                        "user_id": cid,
+                        "source_group_id": source_gid,
+                        "source_group_name": g["name"],
+                        "date": datetime.now().isoformat()
+                    })
+                    save_db(db)
+            send_welcome(cid, db)
+        else:
+            # любое другое сообщение от гостя — тоже показываем оффер
+            send_welcome(cid, db)
+        return
+
     state=USER_STATE.get(cid)
 
     # ── ЗАГРУЗКА КАРТИНКИ ──────────────────────────────────────────
+    if photo and state=="awaiting_welcome_image":
+        file_id=photo[-1]["file_id"]
+        db["welcome_image"]=file_id
+        save_db(db)
+        USER_STATE[cid]=None
+        send(cid,"✅ Картинка приветствия сохранена!\n\nТеперь все гости, пришедшие по ссылке, увидят её перед текстом оффера.\n\nПроверь сам: /preview")
+        return
+
     if photo and state=="awaiting_image":
         images=db.get("images",[])
         if len(images)>=3:
@@ -316,20 +384,6 @@ def on_message(msg, db):
     # ── КОМАНДЫ ───────────────────────────────────────────────────
     if text and text.startswith("/start"):
         USER_STATE[cid]=None
-        parts = text.split(" ", 1)
-        if len(parts) == 2:
-            source_gid = parts[1].strip()
-            g = next((x for x in db["groups"] if x["id"] == source_gid), None)
-            if g:
-                if "leads" not in db:
-                    db["leads"] = []
-                db["leads"].append({
-                    "user_id": cid,
-                    "source_group_id": source_gid,
-                    "source_group_name": g["name"],
-                    "date": datetime.now().isoformat()
-                })
-                save_db(db)
         send(cid,
 "🤖 CityPostBot — рекламный отдел La Ciudad\n\n"
 "━━━ 📢 ПОСТИНГ ━━━\n"
@@ -339,6 +393,9 @@ def on_message(msg, db):
 "/setimage — загрузить картинку (до 3 штук, ротация)\n"
 "/images — посмотреть сохранённые картинки\n"
 "/clearimages — удалить все картинки\n\n"
+"━━━ 🎟 ОФФЕР ДЛЯ ГОСТЕЙ ━━━\n"
+"/setwelcomeimage — картинка приветствия (CLUB ACCESS)\n"
+"/preview — посмотреть оффер глазами гостя\n\n"
 "━━━ 👥 ГРУППЫ ━━━\n"
 "/groups — список всех групп со статусами\n"
 "/find — найти группу по названию или @handle\n"
@@ -379,6 +436,17 @@ def on_message(msg, db):
         db["images"]=[]
         save_db(db)
         send(cid,"Все картинки удалены.")
+
+    elif text=="/setwelcomeimage":
+        USER_STATE[cid]="awaiting_welcome_image"
+        send(cid,"Отправь картинку для приветствия гостей (CLUB ACCESS).\n\nЕё увидит каждый, кто перейдёт по помеченной ссылке из объявления.")
+
+    elif text=="/preview" or text.startswith("/preview@"):
+        send(cid,"👇 Так гость видит оффер при входе по ссылке:")
+        try:
+            send_welcome(cid, db)
+        except Exception as e:
+            send(cid, f"⚠️ Ошибка показа оффера: {e}")
 
     elif text=="/groups":
         if not db["groups"]: send(cid,"Групп нет."); return
@@ -451,21 +519,29 @@ def on_message(msg, db):
         send(cid,"Из какой группы написал человек?",reply_markup=kb(btns))
 
     elif text=="/leads":
-        leads=db.get("leads",[])
+        auto_leads=db.get("leads",[])
         manual_leads=db.get("manual_leads",[])
-        all_leads=manual_leads
-        if not all_leads and not leads:
-            send(cid,"Лидов пока нет.\n\nИспользуй /lead чтобы записать заинтересованного человека.")
+        if not auto_leads and not manual_leads:
+            send(cid,"Лидов пока нет.\n\nАвтоматические появятся, когда люди перейдут по помеченной ссылке из объявления.\nРучные добавляются через /lead")
             return
-        t=f"Лиды ({len(all_leads)}):\n\n"
-        for l in reversed(all_leads):
-            date=l.get("date","")[:10]
-            name=l.get("name","—")
-            source=l.get("source","—")
-            note=l.get("note","")
-            t+=f"👤 {name}\n   Источник: {source}\n   Дата: {date}"
-            if note: t+=f"\n   Заметка: {note}"
-            t+="\n\n"
+        t=""
+        if auto_leads:
+            t+=f"🔗 Автоматические лиды — пришли по ссылке ({len(auto_leads)}):\n\n"
+            for l in reversed(auto_leads):
+                date=l.get("date","")[:10]
+                src=l.get("source_group_name","—")
+                uid=l.get("user_id","—")
+                t+=f"👤 ID {uid}\n   Источник: {src}\n   Дата: {date}\n\n"
+        if manual_leads:
+            t+=f"📝 Ручные лиды ({len(manual_leads)}):\n\n"
+            for l in reversed(manual_leads):
+                date=l.get("date","")[:10]
+                name=l.get("name","—")
+                source=l.get("source","—")
+                note=l.get("note","")
+                t+=f"👤 {name}\n   Источник: {source}\n   Дата: {date}"
+                if note: t+=f"\n   Заметка: {note}"
+                t+="\n\n"
         send(cid,t)
 
     elif text and text.startswith("/find"):
@@ -574,6 +650,8 @@ def main():
         {"command":"setlink","description":"🔗 Изменить общую ссылку в постах"},
         {"command":"setgrouplink","description":"🔗 Уникальная ссылка для группы"},
         {"command":"setdate","description":"📅 Изменить дату игры в объявлениях"},
+        {"command":"setwelcomeimage","description":"🎟 Картинка приветствия для гостей"},
+        {"command":"preview","description":"👁 Посмотреть оффер глазами гостя"},
     ])
     print("Меню команд зарегистрировано")
     offset=0
