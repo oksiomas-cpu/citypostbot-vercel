@@ -164,22 +164,20 @@ def on_callback(cq, db):
         image_file_id = next_image(gid, db)
         img_label = f"🖼 картинка {(len([p for p in db['publications'] if p['group_id']==gid]) % len(images)) + 1} из {len(images)}" if images else "🖼 картинок нет — /setimage"
 
-        # Отправляем новое сообщение с превью картинки и текстом
-        sep = "─"*30
+        # Отправляем превью поста
         preview = (
             f"Группа: {html_escape(g['name'])} | {g['platform']}\n"
             f"Версия: {ver} | Ссылка: {link_label} | {img_label}\n\n"
-            f"{sep}\n\n"
+            f"- - - - - - - - - - - - - - -\n\n"
             f"{text}\n\n"
-            f"{sep}\n\n"
-            f"Скопируй текст выше и опубликуй в группу.\n"
-            f"{'⚠️ Картинка: отправь её вручную вместе с текстом.' if image_file_id else '⚠️ Картинок нет — добавь через /setimage'}"
+            f"- - - - - - - - - - - - - - -\n\n"
+            f"Скопируй текст выше и опубликуй в группу."
         )
-        edit(cid, mid, preview,
-            reply_markup=kb([
-                [("✅ Отправила", f"sent_{gid}_{ver}"), ("⏭ Пропустить", f"skip_{gid}")],
-                [("🖼 Показать картинку", f"showimg_{gid}")] if image_file_id else []
-            ]))
+        buttons = [("✅ Отправила", f"sent_{gid}_{ver}"), ("⏭ Пропустить", f"skip_{gid}")]
+        rows = [[b for b in buttons]]
+        if image_file_id:
+            rows.append([("🖼 Показать картинку", f"showimg_{gid}")])
+        edit(cid, mid, preview, reply_markup=kb(rows))
 
     elif data.startswith("showimg_"):
         gid=data[8:]
