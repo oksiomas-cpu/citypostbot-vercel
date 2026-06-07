@@ -257,7 +257,29 @@ def on_message(msg,db):
                     "date": datetime.now().isoformat()
                 })
                 save_db(db)
-        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/delete — удалить группу\n/status — сменить статус группы\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди\n/lead — записать заинтересованного человека\n/leads — список всех лидов")
+        send(cid,
+"🤖 CityPostBot — рекламный отдел La Ciudad\n\n"
+"━━━ 📢 ПОСТИНГ ━━━\n"
+"/post — выбрать группу и получить текст объявления\n"
+"/setdate — изменить дату игры в объявлениях\n\n"
+"━━━ 👥 ГРУППЫ ━━━\n"
+"/groups — список всех групп со статусами\n"
+"/add — добавить новую группу\n"
+"/delete — удалить группу из базы\n"
+"/status — вручную сменить статус группы\n"
+"/setlink — изменить общую ссылку в постах\n"
+"/setgrouplink — уникальная ссылка для группы\n\n"
+"━━━ 📊 АНАЛИТИКА ━━━\n"
+"/stats — статистика публикаций и откликов\n"
+"/sources — откуда приходят люди (UTM-метки)\n\n"
+"━━━ 🎯 ЛИДЫ ━━━\n"
+"/lead — записать заинтересованного человека\n"
+"/leads — список всех лидов с источниками\n\n"
+"━━━━━━━━━━━━━━━━━━━━\n"
+"💡 Статусы групп:\n"
+"✅ активная  ❌ мёртвая  🔲 новая\n"
+"🔗 своя ссылка  · общая ссылка"
+)
 
     elif text=="/groups":
         if not db["groups"]: send(cid,"Групп нет."); return
@@ -566,6 +588,23 @@ def main():
     t.start()
     print("Планировщик запущен (проверка каждый час)")
     api("deleteWebhook")
+    # Регистрируем меню команд в Telegram
+    api("setMyCommands", commands=[
+        {"command":"start","description":"📋 Шпаргалка — все команды"},
+        {"command":"post","description":"📢 Получить текст объявления для группы"},
+        {"command":"groups","description":"👥 Список всех групп со статусами"},
+        {"command":"add","description":"➕ Добавить новую группу"},
+        {"command":"delete","description":"🗑 Удалить группу из базы"},
+        {"command":"status","description":"🔄 Сменить статус группы"},
+        {"command":"stats","description":"📊 Статистика публикаций и откликов"},
+        {"command":"sources","description":"🔍 Откуда приходят люди (UTM)"},
+        {"command":"lead","description":"🎯 Записать заинтересованного человека"},
+        {"command":"leads","description":"📋 Список всех лидов"},
+        {"command":"setlink","description":"🔗 Изменить общую ссылку в постах"},
+        {"command":"setgrouplink","description":"🔗 Уникальная ссылка для группы"},
+        {"command":"setdate","description":"📅 Изменить дату игры в объявлениях"},
+    ])
+    print("Меню команд зарегистрировано")
     offset=0
     while True:
         try:
