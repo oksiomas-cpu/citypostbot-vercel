@@ -49,8 +49,13 @@ def save_db(db):
         json.dump(db,f,ensure_ascii=False,indent=2)
 
 def get_link_for_group(g, db):
-    """Возвращает уникальную ссылку группы или общую, если своей нет."""
-    return g.get("group_link") or db.get("link", "")
+    """Возвращает ссылку с UTM-меткой группы (через ?start=ID)."""
+    base = g.get("group_link") or db.get("link", "")
+    gid = g.get("id", "")
+    if gid and base:
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}start={gid}"
+    return base
 
 def api(method,**params):
     data=json.dumps(params).encode()
@@ -131,9 +136,24 @@ def on_message(msg,db):
     if cid!=ADMIN_ID: return
     state=USER_STATE.get(cid)
 
-    if text=="/start":
+    if text and text.startswith("/start"):
         USER_STATE[cid]=None
-        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры")
+        # Фиксируем источник если есть ?start=gID
+        parts = text.split(" ", 1)
+        if len(parts) == 2:
+            source_gid = parts[1].strip()
+            g = next((x for x in db["groups"] if x["id"] == source_gid), None)
+            if g:
+                if "leads" not in db:
+                    db["leads"] = []
+                db["leads"].append({
+                    "user_id": cid,
+                    "source_group_id": source_gid,
+                    "source_group_name": g["name"],
+                    "date": datetime.now().isoformat()
+                })
+                save_db(db)
+        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди")
 
     elif text=="/groups":
         if not db["groups"]: send(cid,"Групп нет."); return
@@ -208,8 +228,19 @@ def on_message(msg,db):
             send(cid,f"Ссылка для «{g['name']}» сохранена:\n{g['group_link']}")
         USER_STATE[cid]=None
 
+    elif text=="/sources":
+        leads = db.get("leads", [])
+        if not leads:
+            send(cid,"Переходов по меткам пока нет.\n\nКогда кто-то кликнет ссылку из поста и напишет боту — появится здесь.")
+        else:
+            from collections import Counter
+            counts = Counter(l["source_group_name"] for l in leads)
+            t = f"Источники ({len(leads)} переходов):\n\n"
+            for name, cnt in counts.most_common():
+                t += f"• {name}: {cnt}\n"
+            send(cid, t)
     else:
-        send(cid,"Используй: /post /groups /add /stats /setlink /setgrouplink /setdate")
+        send(cid,"Используй: /post /groups /add /stats /setlink /setgrouplink /setdate /sources")
 
 def on_callback(cq,db):
     cid=cq["message"]["chat"]["id"]
