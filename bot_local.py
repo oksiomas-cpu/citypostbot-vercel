@@ -8,9 +8,9 @@ DB_PATH = os.path.expanduser("~/citypostbot_data.json")
 USER_STATE = {}
 
 ADS = {
-    "A": "Привет!\n\nУчите испанский, но не хватает живой практики?\n\nВ разговорном клубе La Ciudad de los Sentidos играем в детективную игру на испанском — 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
-    "B": "Привет!\n\nЖивёте в Испании, но говорить по-испански всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, где практика спрятана внутри детективной игры. 5 человек, у каждого роль, всё на испанском.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
-    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
+    "A": "Привет!\n\nУчите испанский, но не хватает живой практики?\n\nВ разговорном клубе La Ciudad de los Sentidos играем в детективную игру на испанском — 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы <a href=\"{link}\">выбрать удобное время</a> 👉\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
+    "B": "Привет!\n\nЖивёте в Испании, но говорить по-испански всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, где практика спрятана внутри детективной игры. 5 человек, у каждого роль, всё на испанском.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы <a href=\"{link}\">выбрать удобное время</a> 👉\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
+    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\n<a href=\"{link}\">Присоединяйтесь к игре</a> 👉\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
 }
 
 DEFAULT_GROUPS = [
@@ -59,7 +59,9 @@ def get_link_for_group(g, db):
         return f"{base}{sep}start={gid}"
     return base
 
-def next_image(gid, db):
+def html_escape(text):
+    """Экранирует спецсимволы HTML в обычном тексте (не в тегах объявлений)."""
+    return text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
     """Возвращает file_id картинки для группы (ротация по кругу)."""
     images = db.get("images", [])
     if not images:
@@ -78,8 +80,8 @@ def api(method, **params):
         print(f"API error {method}: {e}")
         return {}
 
-def send(chat_id, text, reply_markup=None):
-    p={"chat_id":chat_id,"text":text}
+def send(chat_id, text, reply_markup=None, parse_mode="HTML"):
+    p={"chat_id":chat_id,"text":text,"parse_mode":parse_mode}
     if reply_markup: p["reply_markup"]=reply_markup
     api("sendMessage",**p)
 
@@ -90,7 +92,7 @@ def send_photo(chat_id, photo, caption, reply_markup=None):
     return api("sendPhoto",**p)
 
 def edit(chat_id, msg_id, text, reply_markup=None):
-    p={"chat_id":chat_id,"message_id":msg_id,"text":text}
+    p={"chat_id":chat_id,"message_id":msg_id,"text":text,"parse_mode":"HTML"}
     if reply_markup: p["reply_markup"]=reply_markup
     api("editMessageText",**p)
 
@@ -163,12 +165,13 @@ def on_callback(cq, db):
         img_label = f"🖼 картинка {(len([p for p in db['publications'] if p['group_id']==gid]) % len(images)) + 1} из {len(images)}" if images else "🖼 картинок нет — /setimage"
 
         # Отправляем новое сообщение с превью картинки и текстом
+        sep = "─"*30
         preview = (
-            f"Группа: {g['name']} | {g['platform']}\n"
+            f"Группа: {html_escape(g['name'])} | {g['platform']}\n"
             f"Версия: {ver} | Ссылка: {link_label} | {img_label}\n\n"
-            f"{'─'*30}\n\n"
+            f"{sep}\n\n"
             f"{text}\n\n"
-            f"{'─'*30}\n\n"
+            f"{sep}\n\n"
             f"Скопируй текст выше и опубликуй в группу.\n"
             f"{'⚠️ Картинка: отправь её вручную вместе с текстом.' if image_file_id else '⚠️ Картинок нет — добавь через /setimage'}"
         )
