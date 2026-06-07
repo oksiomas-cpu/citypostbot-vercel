@@ -76,14 +76,6 @@ def api(method, **params):
             return json.loads(r.read())
     except Exception as e:
         print(f"API error {method}: {e}")
-        # шлём ошибку админу, но только если падает не само уведомление (защита от петли)
-        if method!="sendMessage":
-            try:
-                d=json.dumps({"chat_id":ADMIN_ID,"text":f"⚠️ API error в {method}: {e}"}).encode()
-                rq=urllib.request.Request(f"{BOT_URL}/sendMessage",data=d,headers={"Content-Type":"application/json"})
-                urllib.request.urlopen(rq,timeout=10)
-            except Exception:
-                pass
         return {}
 
 def send(chat_id, text, reply_markup=None):
