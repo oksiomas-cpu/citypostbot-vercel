@@ -51,13 +51,21 @@ def save_db(db):
     with open(DB_PATH,"w",encoding="utf-8") as f:
         json.dump(db,f,ensure_ascii=False,indent=2)
 
+REDIRECT_BASE = "http://tg.hcs-tomsk.ru/b"
+
 def get_link_for_group(g, db):
-    base = g.get("group_link") or db.get("link", "")
+    """Строит ссылку для группы автоматически.
+    Если у группы своя ссылка (group_link) — использует её.
+    Иначе — строит редирект http://tg.hcs-tomsk.ru/b/N по gID (g1→1, g2→2...).
+    """
+    if g.get("group_link"):
+        return g["group_link"]
     gid = g.get("id", "")
-    if gid and base:
-        sep = "&" if "?" in base else "?"
-        return f"{base}{sep}start={gid}"
-    return base
+    if gid.startswith("g") and gid[1:].isdigit():
+        n = gid[1:]
+        return f"{REDIRECT_BASE}/{n}"
+    # фолбэк на старую общую ссылку если gID нестандартный
+    return db.get("link", "")
 
 def next_image(gid, db):
     """Возвращает file_id картинки для группы (ротация по кругу)."""
