@@ -10,7 +10,7 @@ USER_STATE = {}
 ADS = {
     "A": "Привет!\n\nУчите испанский, но не хватает живой практики?\n\nВ разговорном клубе La Ciudad de los Sentidos играем в детективную игру на испанском — 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
     "B": "Привет!\n\nЖивёте в Испании, но говорить по-испански всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, где практика спрятана внутри детективной игры. 5 человек, у каждого роль, всё на испанском.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
-    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь к игре 👉 {link}\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
+    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
 }
 
 DEFAULT_GROUPS = [
@@ -59,9 +59,7 @@ def get_link_for_group(g, db):
         return f"{base}{sep}start={gid}"
     return base
 
-def html_escape(text):
-    """Экранирует спецсимволы HTML в обычном тексте (не в тегах объявлений)."""
-    return text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+def next_image(gid, db):
     """Возвращает file_id картинки для группы (ротация по кругу)."""
     images = db.get("images", [])
     if not images:
@@ -164,20 +162,21 @@ def on_callback(cq, db):
         image_file_id = next_image(gid, db)
         img_label = f"🖼 картинка {(len([p for p in db['publications'] if p['group_id']==gid]) % len(images)) + 1} из {len(images)}" if images else "🖼 картинок нет — /setimage"
 
-        # Отправляем превью поста
+        # Отправляем новое сообщение с превью картинки и текстом
         preview = (
             f"Группа: {g['name']} | {g['platform']}\n"
             f"Версия: {ver} | Ссылка: {link_label} | {img_label}\n\n"
-            f"- - - - - - - - - - - - - - -\n\n"
+            f"{'─'*30}\n\n"
             f"{text}\n\n"
-            f"- - - - - - - - - - - - - - -\n\n"
-            f"Скопируй текст выше и опубликуй в группу."
+            f"{'─'*30}\n\n"
+            f"Скопируй текст выше и опубликуй в группу.\n"
+            f"{'⚠️ Картинка: отправь её вручную вместе с текстом.' if image_file_id else '⚠️ Картинок нет — добавь через /setimage'}"
         )
-        buttons = [("✅ Отправила", f"sent_{gid}_{ver}"), ("⏭ Пропустить", f"skip_{gid}")]
-        rows = [[b for b in buttons]]
-        if image_file_id:
-            rows.append([("🖼 Показать картинку", f"showimg_{gid}")])
-        edit(cid, mid, preview, reply_markup=kb(rows))
+        edit(cid, mid, preview,
+            reply_markup=kb([
+                [("✅ Отправила", f"sent_{gid}_{ver}"), ("⏭ Пропустить", f"skip_{gid}")],
+                [("🖼 Показать картинку", f"showimg_{gid}")] if image_file_id else []
+            ]))
 
     elif data.startswith("showimg_"):
         gid=data[8:]
@@ -194,7 +193,7 @@ def on_callback(cq, db):
         save_db(db)
         edit(cid,mid,
             f"Записала публикацию в {g['name'] if g else gid}\n\nБыл ли отклик на предыдущую публикацию?",
-            reply_markup=kb([[("👍 Был отклик",f"reaction_{gid}_yes"),("👎 Тишина",f"reaction_{gid}_no")]]))
+            reply_markup=kb([[(("👍 Был отклик",f"reaction_{gid}_yes"),("👎 Тишина",f"reaction_{gid}_no"))]]))
 
     elif data.startswith("reaction_"):
         parts=data.split("_"); gid,res=parts[1],parts[2]
@@ -212,7 +211,7 @@ def on_callback(cq, db):
         if not g: return
         edit(cid,mid,
             f"Удалить группу «{g['name']}»?\n\nВсе данные о публикациях в эту группу тоже удалятся.",
-            reply_markup=kb([[("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}")]]))
+            reply_markup=kb([[(("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}"))]]))\
 
     elif data.startswith("confirmdelete_"):
         gid=data[14:]
