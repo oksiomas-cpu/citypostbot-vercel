@@ -1,5 +1,5 @@
-import json, os, urllib.request, time
-from datetime import datetime
+import json, os, urllib.request, time, threading
+from datetime import datetime, timedelta
 
 TOKEN = "8442241163:AAEY3OnzbYzE5X4cD9GvgDbdH7-oFGt0mf4"
 ADMIN_ID = 835260826
@@ -93,6 +93,44 @@ def gstatus(gid,db):
     if len(r)>=3 and all(not p.get("reaction") for p in r): return "dead"
     return "active"
 
+def check_schedule():
+    """Проверяет каждый час — кому пора напомнить о постинге."""
+    while True:
+        try:
+            db = load_db()
+            now = datetime.now()
+            notified = db.get("notified", {})
+            for g in db["groups"]:
+                gid = g["id"]
+                if gstatus(gid, db) == "dead":
+                    continue
+                pubs = [p for p in db["publications"] if p["group_id"] == gid]
+                if pubs:
+                    last_date = datetime.fromisoformat(pubs[-1]["date"])
+                    days_since = (now - last_date).days
+                    due = days_since >= 7
+                else:
+                    # Никогда не постили — напоминаем сразу
+                    due = True
+
+                if due:
+                    # Проверяем не напоминали ли уже сегодня
+                    today = now.strftime("%Y-%m-%d")
+                    last_notified = notified.get(gid, "")
+                    if last_notified != today:
+                        ver = next_ver(gid, db)
+                        send(ADMIN_ID,
+                            f"🔔 Пора постить!\n\n"
+                            f"Группа: {g['name']}\n"
+                            f"Версия объявления: {ver}\n\n"
+                            f"Нажми /post чтобы открыть.")
+                        notified[gid] = today
+                        db["notified"] = notified
+                        save_db(db)
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+        time.sleep(3600)  # Проверяем раз в час
+
 def on_callback(cq,db):
     cid=cq["message"]["chat"]["id"]
     mid=cq["message"]["message_id"]
@@ -125,7 +163,7 @@ def on_callback(cq,db):
         pubs=[p for p in db["publications"] if p["group_id"]==gid]
         if len(pubs)>=2: pubs[-2]["reaction"]=(res=="yes"); save_db(db)
         st=gstatus(gid,db)
-        edit(cid,mid,"Группа мертвая — убрана из ротации." if st=="dead" else "Записала! Следующая через 4 дня.")
+        edit(cid,mid,"Группа мертвая — убрана из ротации." if st=="dead" else "Записала! Напомню через 7 дней.")
 
     elif data.startswith("skip_"):
         edit(cid,mid,"Пропустили.")
@@ -309,6 +347,44 @@ def on_message(msg,db):
     else:
         send(cid,"Используй: /post /groups /add /delete /status /stats /setlink /setgrouplink /setdate /sources")
 
+def check_schedule():
+    """Проверяет каждый час — кому пора напомнить о постинге."""
+    while True:
+        try:
+            db = load_db()
+            now = datetime.now()
+            notified = db.get("notified", {})
+            for g in db["groups"]:
+                gid = g["id"]
+                if gstatus(gid, db) == "dead":
+                    continue
+                pubs = [p for p in db["publications"] if p["group_id"] == gid]
+                if pubs:
+                    last_date = datetime.fromisoformat(pubs[-1]["date"])
+                    days_since = (now - last_date).days
+                    due = days_since >= 7
+                else:
+                    # Никогда не постили — напоминаем сразу
+                    due = True
+
+                if due:
+                    # Проверяем не напоминали ли уже сегодня
+                    today = now.strftime("%Y-%m-%d")
+                    last_notified = notified.get(gid, "")
+                    if last_notified != today:
+                        ver = next_ver(gid, db)
+                        send(ADMIN_ID,
+                            f"🔔 Пора постить!\n\n"
+                            f"Группа: {g['name']}\n"
+                            f"Версия объявления: {ver}\n\n"
+                            f"Нажми /post чтобы открыть.")
+                        notified[gid] = today
+                        db["notified"] = notified
+                        save_db(db)
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+        time.sleep(3600)  # Проверяем раз в час
+
 def on_callback(cq,db):
     cid=cq["message"]["chat"]["id"]
     mid=cq["message"]["message_id"]
@@ -349,7 +425,7 @@ def on_callback(cq,db):
         pubs=[p for p in db["publications"] if p["group_id"]==gid]
         if len(pubs)>=2: pubs[-2]["reaction"]=(res=="yes"); save_db(db)
         st=gstatus(gid,db)
-        edit(cid,mid,"Группа мертвая — убрана из ротации." if st=="dead" else "Записала! Следующая через 4 дня.")
+        edit(cid,mid,"Группа мертвая — убрана из ротации." if st=="dead" else "Записала! Напомню через 7 дней.")
 
     elif data.startswith("skip_"):
         edit(cid,mid,"Пропустили.")
@@ -412,6 +488,10 @@ def on_callback(cq,db):
 
 def main():
     print("CityPostBot запущен. Остановка: Ctrl+C")
+    # Запускаем планировщик напоминаний в фоне
+    t = threading.Thread(target=check_schedule, daemon=True)
+    t.start()
+    print("Планировщик запущен (проверка каждый час)")
     api("deleteWebhook")
     offset=0
     while True:
