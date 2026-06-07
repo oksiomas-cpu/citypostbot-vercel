@@ -341,6 +341,7 @@ def on_message(msg, db):
 "/clearimages — удалить все картинки\n\n"
 "━━━ 👥 ГРУППЫ ━━━\n"
 "/groups — список всех групп со статусами\n"
+"/find — найти группу по названию или @handle\n"
 "/add — добавить новую группу\n"
 "/delete — удалить группу из базы\n"
 "/status — вручную сменить статус группы\n"
@@ -467,6 +468,24 @@ def on_message(msg, db):
             t+="\n\n"
         send(cid,t)
 
+    elif text and text.startswith("/find"):
+        query = text[5:].strip().lower()
+        if not query:
+            send(cid, "Напиши что искать:\n/find барселона\n/find @handle")
+        else:
+            found = [g for g in db["groups"]
+                     if query in g["name"].lower() or query in g.get("handle","").lower()]
+            if found:
+                t = f"Найдено ({len(found)}):\n\n"
+                for g in found:
+                    st = gstatus(g["id"], db)
+                    em = {"new":"🔲","active":"✅","dead":"❌"}.get(st,"🔲")
+                    pubs = [p for p in db["publications"] if p["group_id"]==g["id"]]
+                    t += f"{em} {g['name']}\n   {g.get('handle','—')} | Публ: {len(pubs)}\n\n"
+            else:
+                t = f"❌ «{query}» не найдено в базе.\n\nДобавить через /add"
+            send(cid, t)
+
     elif text=="/sources":
         leads = db.get("leads", [])
         if not leads:
@@ -529,7 +548,7 @@ def on_message(msg, db):
         send(cid,msg)
 
     else:
-        send(cid,"Используй: /post /setimage /images /groups /add /delete /status /stats /setlink /setgrouplink /setdate /sources /lead /leads")
+        send(cid,"Используй: /post /setimage /images /groups /find /add /delete /status /stats /setlink /setgrouplink /setdate /sources /lead /leads")
 
 def main():
     print("CityPostBot запущен. Остановка: Ctrl+C")
@@ -544,6 +563,7 @@ def main():
         {"command":"images","description":"🖼 Посмотреть сохранённые картинки"},
         {"command":"clearimages","description":"🗑 Удалить все картинки"},
         {"command":"groups","description":"👥 Список всех групп со статусами"},
+        {"command":"find","description":"🔍 Найти группу по названию или @handle"},
         {"command":"add","description":"➕ Добавить новую группу"},
         {"command":"delete","description":"🗑 Удалить группу из базы"},
         {"command":"status","description":"🔄 Сменить статус группы"},
