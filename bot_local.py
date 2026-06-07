@@ -130,6 +130,62 @@ def on_callback(cq,db):
     elif data.startswith("skip_"):
         edit(cid,mid,"Пропустили.")
 
+    elif data.startswith("delete_"):
+        gid=data[7:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        edit(cid,mid,
+            f"Удалить группу «{g['name']}»?\n\nВсе данные о публикациях в эту группу тоже удалятся.",
+            reply_markup=kb([[("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}")]]))
+
+    elif data.startswith("confirmdelete_"):
+        gid=data[14:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        name=g["name"]
+        db["groups"]=[x for x in db["groups"] if x["id"]!=gid]
+        db["publications"]=[p for p in db["publications"] if p["group_id"]!=gid]
+        save_db(db)
+        edit(cid,mid,f"Группа «{name}» удалена.")
+
+    elif data.startswith("canceldelete_"):
+        edit(cid,mid,"Отмена. Группа не удалена.")
+
+    elif data.startswith("setstatus_"):
+        gid=data[10:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        cur=gstatus(gid,db)
+        cur_label={"new":"🔲 новая","active":"✅ активная","dead":"❌ мёртвая"}.get(cur,cur)
+        edit(cid,mid,
+            f"Группа: {g['name']}\nТекущий статус: {cur_label}\n\nВыбери новый статус:",
+            reply_markup=kb([
+                [("✅ Активная",f"setstatusval_{gid}_active"),("❌ Мёртвая",f"setstatusval_{gid}_dead")],
+                [("🔲 Сбросить (новая)",f"setstatusval_{gid}_new")]
+            ]))
+
+    elif data.startswith("setstatusval_"):
+        parts=data.split("_"); gid,new_status=parts[1],parts[2]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        if new_status=="active":
+            # Сбрасываем историю публикаций чтобы статус стал active
+            for p in db["publications"]:
+                if p["group_id"]==gid: p["reaction"]=True
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → ✅ активная")
+        elif new_status=="dead":
+            # Добавляем 3 пустые публикации чтобы бот считал группу мёртвой
+            from datetime import datetime
+            for _ in range(3):
+                db["publications"].append({"group_id":gid,"version":"A","date":datetime.now().isoformat(),"reaction":False})
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → ❌ мёртвая (убрана из ротации)")
+        elif new_status=="new":
+            db["publications"]=[p for p in db["publications"] if p["group_id"]!=gid]
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → 🔲 сброшена (новая)")
+
 def on_message(msg,db):
     cid=msg["chat"]["id"]
     text=msg.get("text","")
@@ -153,7 +209,7 @@ def on_message(msg,db):
                     "date": datetime.now().isoformat()
                 })
                 save_db(db)
-        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди")
+        send(cid,"CityPostBot — помощник по постингу\n\n/post — текст для публикации\n/groups — список групп\n/add — добавить группу\n/delete — удалить группу\n/status — сменить статус группы\n/stats — статистика\n/setlink — изменить общую ссылку\n/setgrouplink — уникальная ссылка для группы\n/setdate — изменить дату игры\n/sources — откуда приходят люди")
 
     elif text=="/groups":
         if not db["groups"]: send(cid,"Групп нет."); return
@@ -239,8 +295,19 @@ def on_message(msg,db):
             for name, cnt in counts.most_common():
                 t += f"• {name}: {cnt}\n"
             send(cid, t)
+
+    elif text=="/delete":
+        if not db["groups"]: send(cid,"Групп нет."); return
+        btns=[[(f"🗑 {g['name']}",f"delete_{g['id']}")] for g in db["groups"]]
+        send(cid,"Выбери группу для удаления:",reply_markup=kb(btns))
+
+    elif text=="/status":
+        if not db["groups"]: send(cid,"Групп нет."); return
+        btns=[[(f"{'✅' if gstatus(g['id'],db)=='active' else '❌' if gstatus(g['id'],db)=='dead' else '🔲'} {g['name']}",f"setstatus_{g['id']}")] for g in db["groups"]]
+        send(cid,"Выбери группу для смены статуса:",reply_markup=kb(btns))
+
     else:
-        send(cid,"Используй: /post /groups /add /stats /setlink /setgrouplink /setdate /sources")
+        send(cid,"Используй: /post /groups /add /delete /status /stats /setlink /setgrouplink /setdate /sources")
 
 def on_callback(cq,db):
     cid=cq["message"]["chat"]["id"]
@@ -286,6 +353,62 @@ def on_callback(cq,db):
 
     elif data.startswith("skip_"):
         edit(cid,mid,"Пропустили.")
+
+    elif data.startswith("delete_"):
+        gid=data[7:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        edit(cid,mid,
+            f"Удалить группу «{g['name']}»?\n\nВсе данные о публикациях в эту группу тоже удалятся.",
+            reply_markup=kb([[("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}")]]))
+
+    elif data.startswith("confirmdelete_"):
+        gid=data[14:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        name=g["name"]
+        db["groups"]=[x for x in db["groups"] if x["id"]!=gid]
+        db["publications"]=[p for p in db["publications"] if p["group_id"]!=gid]
+        save_db(db)
+        edit(cid,mid,f"Группа «{name}» удалена.")
+
+    elif data.startswith("canceldelete_"):
+        edit(cid,mid,"Отмена. Группа не удалена.")
+
+    elif data.startswith("setstatus_"):
+        gid=data[10:]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        cur=gstatus(gid,db)
+        cur_label={"new":"🔲 новая","active":"✅ активная","dead":"❌ мёртвая"}.get(cur,cur)
+        edit(cid,mid,
+            f"Группа: {g['name']}\nТекущий статус: {cur_label}\n\nВыбери новый статус:",
+            reply_markup=kb([
+                [("✅ Активная",f"setstatusval_{gid}_active"),("❌ Мёртвая",f"setstatusval_{gid}_dead")],
+                [("🔲 Сбросить (новая)",f"setstatusval_{gid}_new")]
+            ]))
+
+    elif data.startswith("setstatusval_"):
+        parts=data.split("_"); gid,new_status=parts[1],parts[2]
+        g=next((x for x in db["groups"] if x["id"]==gid),None)
+        if not g: return
+        if new_status=="active":
+            # Сбрасываем историю публикаций чтобы статус стал active
+            for p in db["publications"]:
+                if p["group_id"]==gid: p["reaction"]=True
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → ✅ активная")
+        elif new_status=="dead":
+            # Добавляем 3 пустые публикации чтобы бот считал группу мёртвой
+            from datetime import datetime
+            for _ in range(3):
+                db["publications"].append({"group_id":gid,"version":"A","date":datetime.now().isoformat(),"reaction":False})
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → ❌ мёртвая (убрана из ротации)")
+        elif new_status=="new":
+            db["publications"]=[p for p in db["publications"] if p["group_id"]!=gid]
+            save_db(db)
+            edit(cid,mid,f"Группа «{g['name']}» → 🔲 сброшена (новая)")
 
 def main():
     print("CityPostBot запущен. Остановка: Ctrl+C")
