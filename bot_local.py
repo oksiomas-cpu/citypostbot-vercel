@@ -196,7 +196,7 @@ def on_callback(cq, db):
         save_db(db)
         edit(cid,mid,
             f"Записала публикацию в {g['name'] if g else gid}\n\nБыл ли отклик на предыдущую публикацию?",
-            reply_markup=kb([[(("👍 Был отклик",f"reaction_{gid}_yes"),("👎 Тишина",f"reaction_{gid}_no"))]]))
+            reply_markup=kb([[("👍 Был отклик",f"reaction_{gid}_yes"),("👎 Тишина",f"reaction_{gid}_no")]]))
 
     elif data.startswith("reaction_"):
         parts=data.split("_"); gid,res=parts[1],parts[2]
@@ -214,7 +214,7 @@ def on_callback(cq, db):
         if not g: return
         edit(cid,mid,
             f"Удалить группу «{g['name']}»?\n\nВсе данные о публикациях в эту группу тоже удалятся.",
-            reply_markup=kb([[(("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}"))]]))\
+            reply_markup=kb([[("✅ Да, удалить",f"confirmdelete_{gid}"),("❌ Отмена",f"canceldelete_{gid}")]]))
 
     elif data.startswith("confirmdelete_"):
         gid=data[14:]
