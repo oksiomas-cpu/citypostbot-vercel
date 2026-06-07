@@ -1,0 +1,16 @@
+[Unit]
+Description=La Ciudad Redirect Server
+After=network.target
+
+[Service]
+Type=simple
+User=hcs
+WorkingDirectory=/home/hcs/citypostbot
+ExecStart=/usr/bin/python3 /home/hcs/citypostbot/redirect_server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
