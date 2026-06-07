@@ -519,21 +519,29 @@ def on_message(msg, db):
         send(cid,"Из какой группы написал человек?",reply_markup=kb(btns))
 
     elif text=="/leads":
-        leads=db.get("leads",[])
+        auto_leads=db.get("leads",[])
         manual_leads=db.get("manual_leads",[])
-        all_leads=manual_leads
-        if not all_leads and not leads:
-            send(cid,"Лидов пока нет.\n\nИспользуй /lead чтобы записать заинтересованного человека.")
+        if not auto_leads and not manual_leads:
+            send(cid,"Лидов пока нет.\n\nАвтоматические появятся, когда люди перейдут по помеченной ссылке из объявления.\nРучные добавляются через /lead")
             return
-        t=f"Лиды ({len(all_leads)}):\n\n"
-        for l in reversed(all_leads):
-            date=l.get("date","")[:10]
-            name=l.get("name","—")
-            source=l.get("source","—")
-            note=l.get("note","")
-            t+=f"👤 {name}\n   Источник: {source}\n   Дата: {date}"
-            if note: t+=f"\n   Заметка: {note}"
-            t+="\n\n"
+        t=""
+        if auto_leads:
+            t+=f"🔗 Автоматические лиды — пришли по ссылке ({len(auto_leads)}):\n\n"
+            for l in reversed(auto_leads):
+                date=l.get("date","")[:10]
+                src=l.get("source_group_name","—")
+                uid=l.get("user_id","—")
+                t+=f"👤 ID {uid}\n   Источник: {src}\n   Дата: {date}\n\n"
+        if manual_leads:
+            t+=f"📝 Ручные лиды ({len(manual_leads)}):\n\n"
+            for l in reversed(manual_leads):
+                date=l.get("date","")[:10]
+                name=l.get("name","—")
+                source=l.get("source","—")
+                note=l.get("note","")
+                t+=f"👤 {name}\n   Источник: {source}\n   Дата: {date}"
+                if note: t+=f"\n   Заметка: {note}"
+                t+="\n\n"
         send(cid,t)
 
     elif text and text.startswith("/find"):
