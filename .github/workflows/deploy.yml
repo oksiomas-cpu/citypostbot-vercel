@@ -2,7 +2,9 @@ name: Deploy to Server
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - 'feature/**'
 
 jobs:
   deploy:
@@ -17,10 +19,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             set -e
+            BRANCH="${{ github.ref_name }}"
             if [ -d /home/hcs/citypostbot ]; then
-              cd /home/hcs/citypostbot && git pull origin main
+              cd /home/hcs/citypostbot
+              git fetch origin
+              git checkout $BRANCH
+              git pull origin $BRANCH
             else
               git clone https://github.com/oksiomas-cpu/citypostbot-vercel.git /home/hcs/citypostbot
+              cd /home/hcs/citypostbot
+              git checkout $BRANCH
             fi
             sudo systemctl restart citypostbot
-            echo "Bot restarted OK"
+            echo "Bot restarted OK on branch $BRANCH"
