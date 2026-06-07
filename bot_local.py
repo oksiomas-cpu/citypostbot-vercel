@@ -8,9 +8,9 @@ DB_PATH = os.path.expanduser("~/citypostbot_data.json")
 USER_STATE = {}
 
 ADS = {
-    "A": "Привет!\n\nУчите испанский, но не хватает живой практики?\n\nВ разговорном клубе La Ciudad de los Sentidos играем в детективную игру на испанском — 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы <a href=\"{link}\">выбрать удобное время</a> 👉\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
-    "B": "Привет!\n\nЖивёте в Испании, но говорить по-испански всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, где практика спрятана внутри детективной игры. 5 человек, у каждого роль, всё на испанском.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы <a href=\"{link}\">выбрать удобное время</a> 👉\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
-    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\n<a href=\"{link}\">Присоединяйтесь к игре</a> 👉\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
+    "A": "Привет!\n\nУчите испанский, но не хватает живой практики?\n\nВ разговорном клубе La Ciudad de los Sentidos играем в детективную игру на испанском — 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
+    "B": "Привет!\n\nЖивёте в Испании, но говорить по-испански всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, где практика спрятана внутри детективной игры. 5 человек, у каждого роль, всё на испанском.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь, чтобы выбрать удобное время 👉 {link}\n\nВнутри клуба — тренажёр для подготовки к роли 🎮",
+    "C": "Привет!\n\nИспанский нужен уже сейчас — а говорить всё ещё страшно?\n\nLa Ciudad de los Sentidos — разговорный клуб, детективная игра на испанском. 5 человек, у каждого своя роль.\n\nСледующие игры — {game_date}, уровень A1-A2.\nПрисоединяйтесь к игре 👉 {link}\n\nТренажёр для подготовки к роли — внутри клуба 🎮"
 }
 
 DEFAULT_GROUPS = [
@@ -80,8 +80,8 @@ def api(method, **params):
         print(f"API error {method}: {e}")
         return {}
 
-def send(chat_id, text, reply_markup=None, parse_mode="HTML"):
-    p={"chat_id":chat_id,"text":text,"parse_mode":parse_mode}
+def send(chat_id, text, reply_markup=None):
+    p={"chat_id":chat_id,"text":text}
     if reply_markup: p["reply_markup"]=reply_markup
     api("sendMessage",**p)
 
@@ -92,7 +92,7 @@ def send_photo(chat_id, photo, caption, reply_markup=None):
     return api("sendPhoto",**p)
 
 def edit(chat_id, msg_id, text, reply_markup=None):
-    p={"chat_id":chat_id,"message_id":msg_id,"text":text,"parse_mode":"HTML"}
+    p={"chat_id":chat_id,"message_id":msg_id,"text":text}
     if reply_markup: p["reply_markup"]=reply_markup
     api("editMessageText",**p)
 
@@ -166,7 +166,7 @@ def on_callback(cq, db):
 
         # Отправляем превью поста
         preview = (
-            f"Группа: {html_escape(g['name'])} | {g['platform']}\n"
+            f"Группа: {g['name']} | {g['platform']}\n"
             f"Версия: {ver} | Ссылка: {link_label} | {img_label}\n\n"
             f"- - - - - - - - - - - - - - -\n\n"
             f"{text}\n\n"
