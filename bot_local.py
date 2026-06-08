@@ -54,17 +54,12 @@ def save_db(db):
 REDIRECT_BASE = "http://tg.hcs-tomsk.ru/b"
 
 def get_link_for_group(g, db):
-    """Строит ссылку для группы автоматически.
+    """Ссылка для группы.
     Если у группы своя ссылка (group_link) — использует её.
-    Иначе — строит редирект http://tg.hcs-tomsk.ru/b/N по gID (g1→1, g2→2...).
+    Иначе — ведёт напрямую на канал (db['link']). Редирект-сервер отключён.
     """
     if g.get("group_link"):
         return g["group_link"]
-    gid = g.get("id", "")
-    if gid.startswith("g") and gid[1:].isdigit():
-        n = gid[1:]
-        return f"{REDIRECT_BASE}/{n}"
-    # фолбэк на старую общую ссылку если gID нестандартный
     return db.get("link", "")
 
 def next_image(gid, db):
